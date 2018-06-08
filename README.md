@@ -14,23 +14,32 @@ Features:
 Usage
 =====
 
-Creating a router:
-
+A router is created with `router.new`:
 ``` lua
 local router = require 'router'
-
 local r = router.new()
 ```
 
-Defining routes and actions:
+You can define a route with `r:match`:
 
 ``` lua
-r:get('/hello', function(params)
+local router = require 'router'
+local r = router.new()
+
+r:match('GET', '/hello', function(params)
   print('someone said hello')
 end)
+```
 
--- alternative way:
-r:match('get', '/hello', function(params)
+You can use `r:get(...)` instead of `r:match('GET', ...)`. There are similar shortcuts for the usual http verbs (`r:post`, `r:put`, `r:delete` ...).
+
+In addition to that, `router.lua` supports router parameters (like `/users/:id/comment`) and extra parameters (which come from outside the route).
+
+```
+local router = require 'router'
+local r = router.new()
+
+r:get('/hello', function(params)
   print('someone said hello')
 end)
 
@@ -43,37 +52,97 @@ end)
 r:post('/app/:id/comments', function(params)
   print('comment ' .. params.comment .. ' created on app ' .. params.id)
 end)
+```
 
--- equivalent to all of the above:
+Once the routes are defined, you can trigger their actions by using `r:execute`.
+Given the 3 routes above, execute will work like this:
+
+``` lua
+r:execute('GET',  '/hello')
+-- prints "someone said hello"
+
+r:execute('GET',  '/hello/peter')
+-- prints "hello peter"
+
+r:execute('POST', '/app/4/comments', { comment = 'fascinating'})
+-- prints "comment fascinating created on app 4"
+```
+
+`r:execute` returns either `nil` followed by an error message if no routes where found, or `true` and
+whatever the matched action returned.
+
+If you are defining lots of routes in one go, there is an extra-compact syntax to do so using a table.
+The following code is equivalent to the previous one:
+
+``` lua
+local router = require 'router'
+local r = router.new()
+
 r:match({
-  get = {
+  GET = {
     ['/hello']       = function(params) print('someone said hello') end,
     ['/hello/:name'] = function(params) print('hello, ' .. params.name) end
   },
-  post = {
+  POST = {
     ['/app/:id/comments'] = function(params)
       print('comment ' .. params.comment .. ' created on app ' .. params.id)
     end
   }
 })
 
+r:execute('GET',  '/hello')
+r:execute('GET',  '/hello/peter')
+r:execute('POST', '/app/4/comments', { comment = 'fascinating'})
 ```
 
-Executing routes:
+Usage with openresty
+====================
 
-``` lua
-r:execute('get',  '/hello')
--- someone said hello
+`router.lua` is platform-agnostic, but you can use it with openresty like this:
 
-r:execute('get',  '/hello/peter')
--- hello peter
+``` conf
+# nginx.conf
+http {
+  server {
+    listen 80;
 
-r:execute('post', '/app/4/comments', { comment = 'fascinating'})
--- comment fascinating created on app 4
+    location / {
+      content_by_lua '
+      local router = require 'router'
+      local r = router.new()
+
+      r:match({
+        GET = {
+          ["/hello"]       = function(params) ngx.print("someone said hello") end,
+          ["/hello/:name"] = function(params) ngx.print("hello, " .. params.name) end
+        },
+        POST = {
+          ["/app/:id/comments"] = function(params)
+            ngx.print("comment " .. params.comment .. " created on app " .. params.id)
+          end
+        }
+      })
+
+      local ok, errmsg = r:execute(
+        ngx.var.request_method,
+        ngx.var.request_uri,
+        ngx.req.get_uri_args(),  -- all these parameters
+        ngx.req.get_post_args(), -- will be merged in order
+        {other_arg = 1})         -- into a single "params" table
+
+      if ok then
+        ngx.status = 200
+      else
+        ngx.status = 404
+        ngx.print("Not found!")
+        ngx.log(ngx.ERROR, errmsg)
+      end
+    }
+  }
 ```
 
-`r:execute` returns either `nil` followed by an error message if no routes where found, or `true` and
-whatever the matched action returned.
+Read more about it in https://docs.apitools.com/blog/2014/04/24/a-small-router-for-openresty.html
+
 
 License
 =======

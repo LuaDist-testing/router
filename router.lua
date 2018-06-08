@@ -1,5 +1,5 @@
 local router = {
-  _VERSION     = 'router.lua v1.0.1',
+  _VERSION     = 'router.lua v2.1.0',
   _DESCRIPTION = 'A simple router for Lua',
   _LICENSE     = [[
     MIT LICENSE
@@ -31,7 +31,7 @@ local router = {
 
 local COLON_BYTE = string.byte(':', 1)
 
-local function match_one_path(node, method, path, f)
+local function match_one_path(node, path, f)
   for token in path:gmatch("[^/.]+") do
     node[token] = node[token] or {}
     node = node[token]
@@ -54,7 +54,7 @@ local function resolve(path, node, params)
     if child_token:byte(1) == COLON_BYTE then -- token begins with ':'
       local param_name = child_token:sub(2)
       local param_value = params[param_name]
-      params[param_name] = param_value or current_token -- store the value in params, resolve tail path
+      params[param_name] = current_token or param_value -- store the value in params, resolve tail path
 
       local f, bindings = resolve(path, child_node, params)
       if f then return f, bindings end
@@ -66,25 +66,44 @@ local function resolve(path, node, params)
   return false
 end
 
-local function copy(t, visited)
-  if type(t) ~= 'table' then return t end
-  if visited[t] then return visited[t] end
-  local result = {}
-  for k,v in pairs(t) do result[copy(k)] = copy(v) end
-  visited[t] = result
+local function merge(destination, origin, visited)
+  if type(origin) ~= 'table' then return origin end
+  if visited[origin] then return visited[origin] end
+  if destination == nil then destination = {} end
+
+  for k,v in pairs(origin) do
+    k = merge(nil, k, visited) -- makes a copy of k
+    if destination[k] == nil then
+      destination[k] = merge(nil, v, visited)
+    end
+  end
+
+  return destination
+end
+
+local function merge_params(...)
+  local params_list = {...}
+  local result, visited = {}, {}
+
+  for i=1, #params_list do
+    merge(result, params_list[i], visited)
+  end
+
   return result
 end
 
 ------------------------------ INSTANCE METHODS ------------------------------------
 local Router = {}
 
-function Router:resolve(method, path, params)
-  return resolve(path, self._tree[method] , copy(params or {}, {}))
+function Router:resolve(method, path, ...)
+  local node   = self._tree[method]
+  if not node then return nil, ("Unknown method: %s"):format(method) end
+  return resolve(path, node, merge_params(...))
 end
 
-function Router:execute(method, path, query_params)
-  local f,params = self:resolve(method, path, query_params)
-  if not f then return nil, ('Could not resolve %s %s'):format(method, path) end
+function Router:execute(method, path, ...)
+  local f,params = self:resolve(method, path, ...)
+  if not f then return nil, ('Could not resolve %s %s - %s'):format(method, path, params) end
   return true, f(params)
 end
 
@@ -95,15 +114,15 @@ function Router:match(method, path, f)
   for m, routes in pairs(method) do
     for path, f in pairs(routes) do
       if not self._tree[m] then self._tree[m] = {} end
-      match_one_path(self._tree[m], method, path, f)
+      match_one_path(self._tree[m], path, f)
     end
   end
 end
 
-for _,http_method in ipairs({'get', 'post', 'put', 'delete', 'trace', 'connect', 'options', 'head'}) do
-  Router[http_method] = function(self, path, f) -- Router.get = function(self, path, f)
-    return self:match(http_method, path, f)     --   return self:match('get', path, f)
-  end                                           -- end
+for method in ("get post put delete trace connect options head"):gmatch("%S+") do
+  Router[method] = function(self, path, f)     -- Router.get = function(self, path, f)
+    return self:match(method:upper(), path, f) --   return self:match('GET', path, f)
+  end                                          -- end
 end
 
 local router_mt = { __index = Router }
