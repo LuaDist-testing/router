@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "router"
-version = "1.0-0"
+version = "1.0-1"
 -- LuaDist source
 source = {
-  tag = "1.0-0",
+  tag = "1.0-1",
   url = "git://github.com/LuaDist-testing/router.git"
 }
 -- Original source
 -- source = {
---   url = "https://github.com/APItools/router.lua/archive/v1.0.0.tar.gz",
---   dir = "router.lua-1.0.0"
+--   url = "https://github.com/APItools/router.lua/archive/v1.0.1.tar.gz",
+--   dir = "router.lua-1.0.1"
 -- }
 description = {
    summary = "A barebones router for Lua. It matches urls and executes lua functions",
